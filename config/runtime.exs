@@ -1,5 +1,7 @@
 import Config
 
+require Logger
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration
@@ -20,26 +22,55 @@ if System.get_env("PHX_SERVER") do
   config :fixedgear, FixedGearWeb.Endpoint, server: true
 end
 
-config :fixedgear, FixedGearWeb.Endpoint,
-  http: [port: String.to_integer(System.get_env("PORT", "4000"))]
+config :fixedgear, stage: System.fetch_env!("STAGE")
 
 if config_env() == :prod do
-  database_url =
-    System.get_env("DATABASE_URL") ||
-      raise """
-      environment variable DATABASE_URL is missing.
-      For example: ecto://USER:PASS@HOST/DATABASE
-      """
-
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
-  config :fixedgear, FixedGear.Repo,
-    # ssl: true,
-    url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
-    # For machines with several cores, consider starting multiple pools of `pool_size`
-    # pool_count: 4,
-    socket_options: maybe_ipv6
+  host = System.fetch_env!("PHX_HOST")
+  port = String.to_integer(System.get_env("PORT", "443"))
+
+  case System.get_env("STAGE") do
+    stage when stage in ["local", "dev", "staging", "prod"] ->
+      :ok =
+        Logger.warning(
+          "Ignoring variable DATABASE_URL as Postgrex connection protocol, " <>
+            "proceeding with direct TCP connection."
+        )
+
+      config :fixedgear, FixedGear.Repo,
+        pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+        socket_options: maybe_ipv6,
+        show_sensitive_data_on_connection_error: false,
+        database: System.get_env("DB_DATABASE"),
+        username: System.fetch_env!("DB_USERNAME"),
+        password: System.fetch_env!("DB_PASSWORD"),
+        hostname: System.fetch_env!("DB_HOSTNAME")
+
+      config :fixedgear, FixedGearWeb.Endpoint,
+        http: [port: port, ip: {0, 0, 0, 0, 0, 0, 0, 0}],
+        url: [host: host, port: 80]
+
+    _stage ->
+      :ok = Logger.info("Using DATABASE_URL as Postgrex connection protocol.")
+
+      database_url =
+        System.get_env("DATABASE_URL") ||
+          raise """
+          environment variable DATABASE_URL is missing.
+          For example: ecto://USER:PASS@HOST/DATABASE
+          """
+
+      config :fixedgear, FixedGear.Repo,
+        ssl: true,
+        url: database_url,
+        pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+        socket_options: maybe_ipv6
+
+      config :fixedgear, FixedGearWeb.Endpoint,
+        http: [port: port, ip: {0, 0, 0, 0, 0, 0, 0, 0}],
+        url: [scheme: "https", host: host, port: port]
+  end
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
@@ -53,68 +84,29 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
-  host = System.get_env("PHX_HOST") || "example.com"
-
   config :fixedgear, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
   config :fixedgear, FixedGearWeb.Endpoint,
-    url: [host: host, port: 443, scheme: "https"],
-    http: [
-      # Enable IPv6 and bind on all interfaces.
-      # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
-      # See the documentation on https://bandit.hexdocs.pm/Bandit.html#t:options/0
-      # for details about using IPv6 vs IPv4 and loopback vs public addresses.
-      ip: {0, 0, 0, 0, 0, 0, 0, 0}
-    ],
+    server: true,
     secret_key_base: secret_key_base
 
-  # ## SSL Support
-  #
-  # To get SSL working, you will need to add the `https` key
-  # to your endpoint configuration:
-  #
-  #     config :fixedgear, FixedGearWeb.Endpoint,
-  #       https: [
-  #         ...,
-  #         port: 443,
-  #         cipher_suite: :strong,
-  #         keyfile: System.get_env("SOME_APP_SSL_KEY_PATH"),
-  #         certfile: System.get_env("SOME_APP_SSL_CERT_PATH")
-  #       ]
-  #
-  # The `cipher_suite` is set to `:strong` to support only the
-  # latest and more secure SSL ciphers. This means old browsers
-  # and clients may not be supported. You can set it to
-  # `:compatible` for wider support.
-  #
-  # `:keyfile` and `:certfile` expect an absolute path to the key
-  # and cert in disk or a relative path inside priv, for example
-  # "priv/ssl/server.key". For all supported SSL configuration
-  # options, see https://plug.hexdocs.pm/Plug.SSL.html#configure/1
-  #
-  # We also recommend setting `force_ssl` in your config/prod.exs,
-  # ensuring no data is ever sent via http, always redirecting to https:
-  #
-  #     config :fixedgear, FixedGearWeb.Endpoint,
-  #       force_ssl: [hsts: true]
-  #
-  # Check `Plug.SSL` for all available options in `force_ssl`.
-
-  # ## Configuring the mailer
+  # ----------------------------------------------------------------------------
+  # Email configuration
   #
   # In production you need to configure the mailer to use a different adapter.
-  # Here is an example configuration for Mailgun:
+  # Here is an example configuration for SendGrid:
   #
   #     config :fixedgear, FixedGear.Mailer,
-  #       adapter: Swoosh.Adapters.Mailgun,
-  #       api_key: System.get_env("MAILGUN_API_KEY"),
-  #       domain: System.get_env("MAILGUN_DOMAIN")
+  #       adapter: Swoosh.Adapters.Sendgrid,
+  #       api_key: System.get_env("SENDGRID_API_KEY")
   #
-  # Most non-SMTP adapters require an API client. Swoosh supports Req, Hackney,
-  # and Finch out-of-the-box. This configuration is typically done at
-  # compile-time in your config/prod.exs:
+  # Most non-SMTP adapters require an API client. Swoosh supports Req out-of-the-box:
   #
   #     config :swoosh, :api_client, Swoosh.ApiClient.Req
   #
-  # See https://swoosh.hexdocs.pm/Swoosh.html#module-installation for details.
+  # See https://hexdocs.pm/swoosh/Swoosh.html#module-installation for details.
+
+  config :fixedgear, from_email: System.fetch_env!("FIXEDGEAR_FROM_EMAIL")
+
+  config :fixedgear, FixedGear.Mailer, api_key: System.fetch_env!("SENDGRID_API_KEY")
 end

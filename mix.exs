@@ -98,7 +98,11 @@ defmodule FixedGear.MixProject do
         "esbuild fixedgear --minify",
         "phx.digest"
       ],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "credo --strict", "test"]
+      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "credo --strict", "test"],
+      install: ["deps.get"],
+      reset: ["clean", "deps.clean --all", "deps.get", "ecto.reset"],
+      "check.format": ["format --check-formatted"],
+      "check.credo": ["credo --strict"]
     ]
   end
 end
