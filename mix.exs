@@ -91,13 +91,14 @@ defmodule FixedGear.MixProject do
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
-      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
+      "assets.setup": ["assets.install", "tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind fixedgear", "esbuild fixedgear"],
       "assets.deploy": [
         "tailwind fixedgear --minify",
         "esbuild fixedgear --minify",
         "phx.digest"
       ],
+      "assets.install": ["cmd npm i --prefix assets"],
       precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "credo --strict", "test"],
       install: ["deps.get"],
       reset: ["clean", "deps.clean --all", "deps.get", "ecto.reset"],
