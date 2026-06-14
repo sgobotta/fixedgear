@@ -35,3 +35,6 @@ fixedgear-*.tar
 npm-debug.log
 /assets/node_modules/
 
+# Environment
+.env
+.env.prod
